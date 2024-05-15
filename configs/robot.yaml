@@ -1,0 +1,25 @@
+# flow hyperparameters
+key: 'robot'
+epochs: 15
+num_flow_steps: 5
+features: 3
+hidden_features: 256
+context_features: null
+linear: 'lu'
+base: 'rq-c'
+num_bins: 8
+tail_bound: 3.0
+use_batch_norm: True
+dropout_probability: 0.0
+batch_size: 128
+grad_norm_clip_value: 5.
+learning_rate: 0.001
+
+# IS hyperparameters
+is_method: 'sis'
+space: 'latent'
+N: 2000
+rho: 0.1
+K: 2
+n_trials: 100
+eval_size: 10000

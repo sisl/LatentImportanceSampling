@@ -1,0 +1,26 @@
+# flow hyperparameters
+key: 'f16'
+epochs: 75
+num_flow_steps: 15
+features: 12
+hidden_features: 256
+context_features: null
+linear: 'lu'
+base: 'rq-c'
+num_bins: 8
+tail_bound: 3.0
+use_batch_norm: True
+dropout_probability: 0.1
+batch_size: 128
+grad_norm_clip_value: 5.
+learning_rate: 0.0005
+
+# IS hyperparameters
+is_method: 'ce'
+space: 'latent'
+N: 100000
+rho: 0.1
+K: 2
+n_trials: 20
+eval_size: 10000
+subset: 10000
