@@ -2,7 +2,7 @@
 
 This repository contains code and experiments for the manuscript:
 
-> L. A. Kruse, A. E. Tzikas, H. Delecki, M. M. Arief, M. J. Kochenderfer, _Enhanced Importance Sampling through Latent Space Exploration in Normalizing Flows_, IEEE Robotics and Automation Letters (Under Review).
+_Enhanced Importance Sampling through Latent Space Exploration in Normalizing Flows_ (Under Review)
 
 ## Dependencies
 
