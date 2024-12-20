@@ -2,7 +2,7 @@
 
 This repository contains code and experiments for the manuscript:
 
-_Enhanced Importance Sampling through Latent Space Exploration in Normalizing Flows_ (Under Review)
+_Enhanced Importance Sampling through Latent Space Exploration in Normalizing Flows_ (Accepted, AAAI 2025)
 
 ## Dependencies
 
