@@ -16,8 +16,6 @@ grad_norm_clip_value: 5.
 learning_rate: 0.0005
 
 # IS hyperparameters
-is_method: 'ce'
-space: 'latent'
 N: 10000
 rho: 0.1
 K: 2

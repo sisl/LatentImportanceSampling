@@ -9,8 +9,9 @@ dependencies:
   - pip
   - pytorch
   - scikit-learn
+  - tabulate
   - tqdm
-  - yaml
+  - pyyaml
   - pip:
     - cvxpy
     - nflows

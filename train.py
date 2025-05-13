@@ -1,11 +1,3 @@
-#%%
-import torch;
-torch.__version__
-print("Hi")
-#%%
-#*******************************************************************************
-# Imports and Setup
-#*******************************************************************************
 # packages
 import argparse
 import os
@@ -46,7 +38,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 #*******************************************************************************
-# File IO
+# file IO
 #*******************************************************************************
 train_df = pd.read_csv("data/{}-flow.csv".format(args['key']), header=None)
 train_data = torch.tensor(train_df.values, dtype=torch.float32)
@@ -57,7 +49,7 @@ train_dataloader = DataLoader(TensorDataset(train_data),
 
 
 #*******************************************************************************
-# Flow Construction
+# flow construction
 #*******************************************************************************
 base_dist = StandardNormal(shape=[args['features']])
 transform = create_transform(args)
@@ -70,7 +62,7 @@ total_steps = len(train_dataloader) * args['epochs']
 
 
 #*******************************************************************************
-# Flow Training
+# flow training
 #*******************************************************************************
 tb_key = args['base'] + '-' + args['linear'] + '-' + args['key'] + "test"
 if os.path.isdir("runs/" + tb_key):

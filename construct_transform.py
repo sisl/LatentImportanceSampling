@@ -1,6 +1,3 @@
-#*******************************************************************************
-# Imports and Setup
-#*******************************************************************************
 # packages
 import torch
 
@@ -15,9 +12,6 @@ from nflows.transforms import LULinear
 from nflows.transforms.permutations import ReversePermutation
 
 
-#*******************************************************************************
-# Function Definitions
-#*******************************************************************************
 def create_alternating_binary_mask(features, even=True):
     '''
     Create a binary mask for coupling layers. This code is inspired by the 

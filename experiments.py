@@ -4,53 +4,89 @@
 # packages
 import argparse
 import json
+import numpy as np
+import os
 import pandas as pd
 import pickle
 from prdc import compute_prdc
+import torch
 import yaml
 
-# torch imports
-import torch
-from torch.distributions import (
-    Categorical, MixtureSameFamily, MultivariateNormal
-)
-
 # file imports
-from is_methods.CEIS_GM import CEIS_GM
-from is_methods.SIS_GM import SIS_GM
-from utils import outside_ellipsoid, min_enclosing_ellipsoid
+from is_methods.cross_entropy import cross_entropy_is
+from is_methods.sequential import sequential_is
+from utils.ellipsoids import outside_ellipsoid, min_enclosing_ellipsoid
+from utils.gmm import GMM
 
-# setup
+
+def save_metrics(dir, Pfs, rel_errs, log_probs, coverages, densities, total_samples, samples_per_level):
+    metrics = {}
+    metrics['Pfs'] = np.array(Pfs.numpy()).tolist()
+    metrics['Pfs mean'] = float(Pfs.mean())
+    metrics['Pfs std'] = float(Pfs.std())
+    metrics['rel errs'] =  np.array(rel_errs.numpy()).tolist()
+    metrics['rel errs mean'] = float(rel_errs.mean())
+    metrics['rel errs std'] = float(rel_errs .std())
+    metrics['log probs'] = np.array(log_probs.numpy()).tolist()
+    metrics['log probs mean'] = float(log_probs.mean())
+    metrics['log probs std'] = float(log_probs.std())
+    metrics['coverages'] = np.array(coverages.numpy()).tolist()
+    metrics['coverages mean'] = float(coverages.mean())
+    metrics['coverages std'] = float(coverages.std())
+    metrics['densities'] = np.array(densities.numpy()).tolist()
+    metrics['densities mean'] = float(densities.mean())
+    metrics['densities std'] = float(densities.std())
+    metrics['total samples'] = np.array(total_samples.numpy()).tolist()
+    metrics['total samples mean'] = float(total_samples.mean())
+    metrics['total samples std'] = float(total_samples.std())
+    metrics['samples_per_level'] = float(samples_per_level)
+
+    # save results
+    with open(os.path.join(dir, "results.json"), "w") as outfile:
+        json.dump(metrics, outfile)
+
+
+# argument parser
 parser = argparse.ArgumentParser()
-parser.add_argument('--simulator',
-                    choices=['robot', 'racecar', 'f16'],
-                    default='robot',
-                    help='Choose an autonomous systems simulator.')
-simulator = parser.parse_args()
+parser.add_argument('--simulator', type=str, default='robot',
+                    choices=['robot', 'racecar', 'f16'])
+parser.add_argument('--space', type=str, default='latent',
+                    choices=['latent', 'target'])
+parser.add_argument('--is_method', type=str, default='ce',
+                    choices=['ce', 'sis'])
+args = parser.parse_args()
 
-with open('configs/{}.yaml'.format(simulator.simulator), 'r') as file:
-    args = yaml.safe_load(file)
+# read in configs
+with open('configs/{}.yaml'.format(args.simulator), 'r') as file:
+    config = yaml.safe_load(file)
+config['simulator'] = args.simulator
+config['space'] = args.space
+config['is_method'] = args.is_method
+
+
+results_dir = f"./results/{config['simulator']}/{config['space']}-{config['is_method']}"
+os.makedirs(results_dir, exist_ok=True)
 
 
 #*******************************************************************************
-# File IO
+# file IO
 #*******************************************************************************
-tb_key = args['base'] + '-' + args['linear'] + '-' + args['key']
-flow_file = open("flows/{}".format(tb_key), "rb")
+flow_name = config['base'] + '-' + config['linear'] + '-' + config['key']
+flow_file = open("flows/{}".format(flow_name), "rb")
 flow = pickle.load(flow_file)
 flow.eval()
 
-flow_df = pd.read_csv("data/{}-flow.csv".format(args['key']), header=None)
+flow_df = pd.read_csv("data/{}-flow.csv".format(config['key']), header=None)
 flow_data = torch.tensor(flow_df.values, dtype=torch.float32)
 
-mcs_df = pd.read_csv("data/{}-mcs.csv".format(args['key']), header=None)
+mcs_df = pd.read_csv("data/{}-mcs.csv".format(config['key']), header=None)
 mcs_data = torch.tensor(mcs_df.values, dtype=torch.float32)
 
 
 #*******************************************************************************
-# Create Target Region
+# create target region
 #*******************************************************************************
-if args['key'] == 'robot': 
+if config['simulator'] == 'robot': 
     
     def generate_cube_corners(x_lim, y_lim, z_lim):
         # generate all possible combinations of coordinates
@@ -71,8 +107,8 @@ if args['key'] == 'robot':
     z_lim2 = torch.tensor([-1.0, -2.0])
     x_in2 = generate_cube_corners(x_lim2, y_lim2, z_lim2)
     
-elif args['key'] == 'racecar':
-    x = flow_data[:args['subset']]
+elif config['simulator'] == 'racecar':
+    x = flow_data[:config['subset']]
     region1 = lambda x : ((x[:,0] > 0.0) & (x[:,2] > 2.75))
     region2 = lambda x : ((x[:,6] < -2.25) & (x[:,0] > 1.5))
 
@@ -81,8 +117,8 @@ elif args['key'] == 'racecar':
     x_in1 = x[mask1]
     x_in2 = x[mask2]
 
-elif args['key'] == 'f16':
-    x = flow_data[:args['subset']]
+elif config['simulator'] == 'f16':
+    x = flow_data[:config['subset']]
     region1 = lambda x : (x[:,3] > 1.45)
     region2 = lambda x : (x[:,10] < -2.45)
 
@@ -91,37 +127,37 @@ elif args['key'] == 'f16':
     x_in1 = x[mask1]
     x_in2 = x[mask2]
 
-sigma1t, mu1t = min_enclosing_ellipsoid(x_in1)
-sigma2t, mu2t = min_enclosing_ellipsoid(x_in2)
+Cov1t, mu1t = min_enclosing_ellipsoid(x_in1)
+Cov2t, mu2t = min_enclosing_ellipsoid(x_in2)
 
-def target_limit_func(x):
+def target_obj_func(x):
     return torch.minimum(
-        outside_ellipsoid(x, mu1t, sigma1t),
-        outside_ellipsoid(x, mu2t, sigma2t)
+        outside_ellipsoid(x, mu1t, Cov1t),
+        outside_ellipsoid(x, mu2t, Cov2t)
     )
 
 
 #*******************************************************************************
-# Approximate Limit Function in Latent Space
+# approximate limit function in latent space
 #*******************************************************************************
-if args['space'] == 'target':
-    # define limit function
-    def limit_func(x):
-        return target_limit_func(x)
+if config['space'] == 'target':
+    # define objective function
+    def obj_func(x):
+        return target_obj_func(x)
     
-elif args['space'] == 'latent':
+elif config['space'] == 'latent':
     with torch.no_grad():
         u_in1 = flow.transform_to_noise(x_in1)
         u_in2 = flow.transform_to_noise(x_in2)
 
-    sigma1, mu1 = min_enclosing_ellipsoid(u_in1)
-    sigma2, mu2 = min_enclosing_ellipsoid(u_in2)
+    Cov1, mu1 = min_enclosing_ellipsoid(u_in1)
+    Cov2, mu2 = min_enclosing_ellipsoid(u_in2)
 
-    # define limit function
-    def limit_func(x):
+    # define objective function
+    def obj_func(x):
         return torch.minimum(
-            outside_ellipsoid(x, mu1, sigma1),
-            outside_ellipsoid(x, mu2, sigma2)
+            outside_ellipsoid(x, mu1, Cov1),
+            outside_ellipsoid(x, mu2, Cov2)
         )
 
 else:
@@ -129,92 +165,76 @@ else:
 
 
 #*******************************************************************************
-# Perform Importance Sampling
+# perform importance sampling
 #*******************************************************************************
-torch.manual_seed(0)
+ref_Pf = (target_obj_func(mcs_data) < 0.).sum() / len(mcs_data)
 
-ref_Pf = (target_limit_func(mcs_data) < 0.).sum() / len(mcs_data)
-
-print("\n**********")
-print("Ref Pf:\t {:.4f}".format(ref_Pf))
-print("**********\n")
+print("\n****************************************")
+print(f"{config['is_method'].upper()} with {config['space']}-space proposals")
+print(f"System: {config['simulator']} with {config['features']} dimensions")
+print("Ref Pf:\t {:.6f}".format(ref_Pf))
+print("****************************************\n")
 
 # prep for coverage metric
-real_samples = mcs_data[(target_limit_func(mcs_data) < 0.)]
-if len(real_samples) > args['eval_size']:
-    real_samples = real_samples[:args['eval_size']]
+real_samples = mcs_data[(target_obj_func(mcs_data) < 0.)]
+if len(real_samples) > config['eval_size']:
+    real_samples = real_samples[:config['eval_size']]
 
-Pfs = torch.zeros(args['n_trials'])
-rel_err = torch.zeros(args['n_trials'])
-Ntots = torch.zeros(args['n_trials'])
-avg_lps = torch.zeros(args['n_trials'])
-densities = torch.zeros(args['n_trials'])
-coverages = torch.zeros(args['n_trials'])
+all_Pfs = torch.zeros(config['n_trials'])
+all_rel_errs = torch.zeros(config['n_trials'])
+all_log_probs = torch.zeros(config['n_trials'])
+all_coverages = torch.zeros(config['n_trials'])
+all_densities = torch.zeros(config['n_trials'])
+all_total_samples = torch.zeros(config['n_trials'])
 
-for i in range(args['n_trials']):
-    # perform IS
-    print('Trial {}'.format(i))
-    if args['is_method'] == 'ce':
-        [Pf, (pi, mu, sig), samples] = \
-            CEIS_GM(args['N'], args['rho'], limit_func, args['features'], 
-                    args['K'])
-    elif args['is_method'] == 'sis':
-        [Pf, (pi, mu, sig), samples] = \
-            SIS_GM(args['N'], args['rho'], limit_func, args['features'], 
-                   args['K'])
 
-    proposal = MixtureSameFamily(
-                mixture_distribution=Categorical(probs=pi),
-                component_distribution=MultivariateNormal(mu, sig))
+for i in range(config['n_trials']):
+    torch.manual_seed(i)
+
+    model = GMM(
+        n_components=config['K'],
+        n_features=config['features']
+    )
     
-    q_samples = proposal.sample((args['eval_size'],))
+    # importance sampling
+    print('Trial {}'.format(i))
+    if config['is_method'] == 'ce':
+        [Pf, model, total_samples] = \
+            cross_entropy_is(config['N'], config['rho'], obj_func, model, flow, config['space'])
+    elif config['is_method'] == 'sis':
+        [Pf, model, total_samples] = \
+            sequential_is(config['N'], config['rho'], obj_func, model, flow, config['space'])
+
+    q_samples = model.sample(config['eval_size'])
     
     # compute metrics
-    if args['space'] == 'latent':
+    if args.space == 'latent':
         with torch.no_grad():
             fake_samples = flow._transform.inverse(q_samples)[0]
     else:
         fake_samples = q_samples
 
+    # log-likelihood
     with torch.no_grad():
-        avg_lp = flow.log_prob(fake_samples).mean()
+        log_probs = flow.log_prob(fake_samples)
 
-    Ntot = args['N'] * len(samples)
-
-    fake = fake_samples[(target_limit_func(fake_samples) < 0.0)]
+    fake = fake_samples[(target_obj_func(fake_samples) < 0.0)]
+    # density and coverage metrics
     prdc_metrics = compute_prdc(real_samples, fake, nearest_k=5) 
-    Pfs[i] = Pf
-    rel_err[i] = (Pf - ref_Pf) / ref_Pf
-    avg_lps[i] = avg_lp
-    densities[i] = prdc_metrics['density']
-    coverages[i] = prdc_metrics['coverage']
-    Ntots[i] = Ntot
 
-print("\n********************")
-print("Avg Failure Prob: {:.4f}".format(Pfs.mean()))
-print("Avg Log Prob: {:.4f}".format(avg_lps.mean()))
-print("Avg Density: {:.4f}".format(densities.mean()))
-print("Avg Coverage: {:.4f}".format(coverages.mean()))
-print("Avg Number of Samples: {:.1f}".format(Ntots.mean()))
-print("********************\n")
+    all_Pfs[i] = Pf
+    all_rel_errs[i] = (Pf - ref_Pf) / ref_Pf
+    all_log_probs[i] = log_probs.mean()
+    all_coverages[i] = prdc_metrics['coverage']
+    all_densities[i] = prdc_metrics['density']
+    all_total_samples[i] = total_samples
 
-metrics = {}
-metrics['pf mean'] = float(Pfs.mean())
-metrics['pf std'] = float(Pfs.std())
-metrics['rel err mean'] = float(rel_err.mean())
-metrics['rel err std'] = float(rel_err.std())
-metrics['avg lp mean'] = float(avg_lps.mean())
-metrics['avg lp std'] = float(avg_lps.std())
-metrics['coverage mean'] = float(coverages.mean())
-metrics['coverage std'] = float(coverages.std())
-metrics['density mean'] = float(densities.mean())
-metrics['density std'] = float(densities.std())
-metrics['Ntot mean'] = float(Ntots.mean())
-metrics['Ntot std'] = float(Ntots.std())
-metrics['N'] = float(args['N'])
-metrics['n_trials'] = float(args['n_trials'])
+    save_metrics(results_dir, all_Pfs, all_rel_errs, all_log_probs, all_coverages, all_densities, all_total_samples, config['N'])
 
-# save results
-with open("results/{}-{}-{}test.json".format(
-    args['key'], args['is_method'], args['space']), "w") as outfile: 
-    json.dump(metrics, outfile)
+print("\n----------------------------------------")
+print("Avg Failure Prob: {:.6f}".format(all_Pfs.mean()))
+print("Avg Log Prob: {:.2f}".format(all_log_probs.mean()))
+print("Avg Coverage: {:.4f}".format(all_coverages.mean()))
+print("Avg Density: {:.4f}".format(all_densities.mean()))
+print("Avg Samples: {:.1f}".format(all_total_samples.mean()))
+print("----------------------------------------\n")
