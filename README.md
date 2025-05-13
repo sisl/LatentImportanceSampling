@@ -55,7 +55,10 @@ Flow hyperparameters are stored in `yaml` files in the `configs/` folder.
 
 ## Latent Importance Sampling Experiments
 
-To reproduce the experimental results, run the `experiments.sh` file. Importance sampling hyperparameters are stored in `yaml` files in the `configs/` folder.
+To reproduce the experimental results, run the `experiments.sh` file. Importance sampling hyperparameters are stored in `yaml` files in the `configs/` folder. To view the logged results (in either `tabulate` format or in `LaTeX` format), run
+```
+python3 utils/results_table.py
+```
 
 ## How to Cite
 If you find this code useful in your research, please cite the following publication:
