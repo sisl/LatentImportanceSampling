@@ -1,8 +1,9 @@
 # Latent Importance Sampling
 
-This repository contains code and experiments for the manuscript:
+This repository contains code and experiments for the paper:
 
-_Enhanced Importance Sampling through Latent Space Exploration in Normalizing Flows_ (Accepted, AAAI 2025)
+> Kruse, L. A., Tzikas, A., Delecki, H., Arief, M., & Kochenderfer, M. J., _Enhanced Importance Sampling through Latent Space Exploration in Normalizing Flows_, AAAI 2025. [[arXiv]](https://arxiv.org/abs/2501.03394)
+
 
 ## Dependencies
 
@@ -13,10 +14,13 @@ conda env create -f environment.yaml
 
 This repository was tested with Python 3.11 and PyTorch 2.1. The `racecar` and `f16` experiments require additional installations (discussed in the following section) if you want to retrain a flow model or generate a dataset of Monte Carlo simulations.
 
-## Data Generation
-To create a dataset (for flow training or Monte Carlo evaluations) for the nonholonomic `robot` experiments, run the following command:
+## Data
+
+The experiments expect a `{simulator}-flow.csv` and `{simulator}-mcs.csv` file for each simulator (`robot`, `racecar`, `f16`). Generated datasets can be downloaded at [this link](https://drive.google.com/drive/folders/12O6kFP5PHiMBGiqutJHAXnoL9OzmnIHx?usp=sharing), and the .csv files should be placed into a folder called `data/`.
+
+New datasets (for additional flow training or Monte Carlo evaluations) can be created using the files in the `datagen/` folder. For the nonholonomic `robot` experiments, run the following command:
 ```
-python3 robot-data.py
+python3 datagen/robot-data.py
 ```
 
 Generating data for the `racecar` experiments requires a [Julia install](https://julialang.org/downloads/) and the MPOPIS (Model Predictive Optimized Path Integral Strategies) repository from the following paper:
@@ -42,18 +46,27 @@ Specific installation instructions can be found in the [Jax F16 repository](http
 
 ## Flow Training
 
-Pre-trained flows are provided in the `flows\` folder. However, if you wish to train a flow from scratch, you can run the following command, replacing the `simulator` argument with
+Pre-trained flows are provided in the `flows/` folder. However, if you wish to train a flow from scratch, you can run the following command, replacing the `simulator` argument with
 the simulator of choice (`robot`, `racecar`, `f16`):
 ```
 python3 train.py --simulator 'robot'
 ```
-Flow hyperparameters are stored in `yaml` files in the `configs\` folder.
+Flow hyperparameters are stored in `yaml` files in the `configs/` folder.
 
 ## Latent Importance Sampling Experiments
 
-The experiments expect a `{simulator}-flow.csv` and `{simulator}-mcs.csv` file for each simulator. `robot-flow.csv` and `robot-mcs.csv` are provided in the repository. The following command runs importance sampling and computes metrics:
-```
-python3 experiments.py --simulator 'robot'
-```
-Importance sampling hyperparameters are stored in `yaml` files in the `configs\` folder and can be adjusted for different runs. For example, to change between target space sampling and latent space sampling, edit the `space` entry. Results are stored in the `results\` folder.
+To reproduce the experimental results, run the `experiments.sh` file. Importance sampling hyperparameters are stored in `yaml` files in the `configs/` folder.
 
+## How to Cite
+If you find this code useful in your research, please cite the following publication:
+```
+@inproceedings{kruse2025enhanced,
+  title={Enhanced Importance Sampling through Latent Space Exploration in Normalizing Flows},
+  author={Kruse, Liam Anthony and Tzikas, Alexandros and Delecki, Harrison and Arief, Mansur and Kochenderfer, Mykel J},
+  booktitle={Proceedings of the AAAI Conference on Artificial Intelligence},
+  volume={39},
+  number={17},
+  pages={17983--17989},
+  year={2025}
+}
+```
